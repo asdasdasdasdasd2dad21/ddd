@@ -1,0 +1,248 @@
+-- ==========================================
+-- FORTNITE-STYLE HIT MARKERS (Cartoon/Bold)
+-- ==========================================
+
+local HitMarkerSystem = {}
+
+HitMarkerSystem.hitMarkers = {}
+HitMarkerSystem.hitMarkerIdCounter = 0
+HitMarkerSystem.FORTNITE_OUTLINE_THICKNESS = 3
+HitMarkerSystem.FORTNITE_SHADOW_OFFSET = 3
+
+-- Cartoon-style fonts
+HitMarkerSystem.CARTOON_FONTS = {
+    Drawing.Fonts.Plex,
+    Drawing.Fonts.Monospace,
+    Drawing.Fonts.UI2,
+}
+
+function HitMarkerSystem.getRandomOffset()
+    local angle = math.random() * math.pi * 2
+    local distance = math.random(15, 45)
+    return Vector2.new(math.cos(angle) * distance, math.sin(angle) * distance - 20)
+end
+
+function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart, flags)
+    HitMarkerSystem.hitMarkerIdCounter = HitMarkerSystem.hitMarkerIdCounter + 1
+    local id = HitMarkerSystem.hitMarkerIdCounter
+    
+    if not flags.HitMarkersEnabled then return nil end
+    
+    local color = flags.HitMarkerColor and flags.HitMarkerColor.Color or Color3.fromRGB(255, 255, 255)
+    local size = flags.HitMarkerSize or 48
+    local duration = flags.HitMarkerDuration or 0.55
+    local isHeadshot = hitPart and (hitPart.Name == "Head" or string.find(hitPart.Name, "Head"))
+    
+    local damageText = "+" .. math.floor(damageAmount)
+    
+    local finalSize = size
+    if isHeadshot then finalSize = size + 8
+    elseif damageAmount > 50 then finalSize = size + 4 end
+    
+    local text = Drawing.new("Text")
+    text.Text = damageText
+    text.Size = finalSize
+    text.Color = color
+    text.Center = true
+    text.Outline = true
+    text.OutlineColor = Color3.fromRGB(0, 0, 0)
+    text.OutlineThickness = HitMarkerSystem.FORTNITE_OUTLINE_THICKNESS
+    text.Font = HitMarkerSystem.CARTOON_FONTS[1]
+    text.Visible = true
+    text.ZIndex = 10
+    
+    local glow = Drawing.new("Text")
+    glow.Text = damageText
+    glow.Size = finalSize + 4
+    glow.Color = Color3.fromRGB(0, 0, 0)
+    glow.Center = true
+    glow.Outline = false
+    glow.Font = HitMarkerSystem.CARTOON_FONTS[1]
+    glow.Visible = true
+    glow.Transparency = 0.7
+    glow.ZIndex = 8
+    
+    local shadow = Drawing.new("Text")
+    shadow.Text = damageText
+    shadow.Size = finalSize
+    shadow.Color = Color3.fromRGB(0, 0, 0)
+    shadow.Center = true
+    shadow.Outline = false
+    shadow.Font = HitMarkerSystem.CARTOON_FONTS[1]
+    shadow.Visible = true
+    shadow.Transparency = 0.5
+    shadow.ZIndex = 9
+    
+    local randomOffset = HitMarkerSystem.getRandomOffset()
+    local marker = {
+        id = id,
+        text = text,
+        glow = glow,
+        shadow = shadow,
+        startTime = tick(),
+        duration = duration,
+        targetChar = targetCharacter,
+        targetPart = hitPart or (targetCharacter and targetCharacter:FindFirstChild("Head")),
+        startSize = finalSize,
+        startOffset = randomOffset,
+        wiggleAmount = math.random(5, 15),
+        floatDistance = math.random(60, 100),
+        rotation = math.random(-15, 15),
+        initialScreenPos = nil,
+        isHeadshot = isHeadshot
+    }
+    
+    HitMarkerSystem.hitMarkers[id] = marker
+    return id
+end
+
+function HitMarkerSystem.updateHitMarkers()
+    local now = tick()
+    local camera = workspace.CurrentCamera
+    local viewport = camera.ViewportSize
+    
+    for id, marker in pairs(HitMarkerSystem.hitMarkers) do
+        local elapsed = now - marker.startTime
+        local t = math.clamp(elapsed / marker.duration, 0, 1)
+        
+        local targetPos = nil
+        local targetExists = false
+        
+        if marker.targetChar and marker.targetChar.Parent then
+            local head = marker.targetChar:FindFirstChild("Head")
+            if head and head:IsA("BasePart") then
+                targetPos = head.Position
+                targetExists = true
+            else
+                local hrp = marker.targetChar:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    targetPos = hrp.Position
+                    targetExists = true
+                end
+            end
+        end
+        
+        local screenPos = Vector2.new(viewport.X / 2, viewport.Y / 2)
+        local onScreen = false
+        
+        if targetExists and targetPos then
+            local pos, onScrn = camera:WorldToViewportPoint(targetPos)
+            if onScrn and pos.Z > 0 then
+                screenPos = Vector2.new(pos.X, pos.Y)
+                onScreen = true
+            end
+        end
+        
+        if onScreen and not marker.initialScreenPos then
+            marker.initialScreenPos = screenPos
+        elseif not onScreen and marker.initialScreenPos then
+            screenPos = marker.initialScreenPos
+            t = math.min(t * 1.5, 1)
+        end
+        
+        local offset = marker.startOffset
+        local easeOut = 1 - (1 - t) ^ 1.5
+        local floatDistance = marker.floatDistance * easeOut
+        
+        local bounce = 0
+        if t < 0.2 then
+            bounce = math.sin(t * math.pi * 2.5) * (1 - t) * 12
+        end
+        
+        local wiggle = math.sin(t * math.pi * 4) * (1 - t) * marker.wiggleAmount
+        
+        local finalPos = Vector2.new(
+            screenPos.X + offset.X + wiggle + bounce,
+            screenPos.Y + offset.Y - floatDistance
+        )
+        
+        local sizeMultiplier = 1
+        if t < 0.15 then
+            sizeMultiplier = 1 + (0.6 * (1 - t / 0.15))
+        elseif t > 0.7 then
+            sizeMultiplier = 1 + (0.15 * math.sin((t - 0.7) / 0.3 * math.pi))
+        end
+        
+        local newSize = marker.startSize * sizeMultiplier
+        local rotation = marker.rotation * (1 - t) * 0.5
+        
+        local alpha = 1
+        if t > 0.55 then
+            alpha = 1 - ((t - 0.55) / 0.45)
+            alpha = math.clamp(alpha, 0, 1)
+        end
+        
+        pcall(function()
+            if marker.text then
+                marker.text.Position = finalPos
+                marker.text.Size = newSize
+                marker.text.Transparency = 1 - alpha
+                pcall(function() marker.text.Rotation = rotation end)
+            end
+            if marker.glow then
+                marker.glow.Position = Vector2.new(finalPos.X, finalPos.Y)
+                marker.glow.Size = newSize + 5
+                marker.glow.Transparency = 0.7 * (1 - alpha * 0.5)
+                pcall(function() marker.glow.Rotation = rotation end)
+            end
+            if marker.shadow then
+                marker.shadow.Position = Vector2.new(finalPos.X + HitMarkerSystem.FORTNITE_SHADOW_OFFSET, finalPos.Y + HitMarkerSystem.FORTNITE_SHADOW_OFFSET)
+                marker.shadow.Size = newSize
+                marker.shadow.Transparency = 0.5 * (1 - alpha)
+                pcall(function() marker.shadow.Rotation = rotation end)
+            end
+        end)
+        
+        if elapsed >= marker.duration then
+            pcall(function()
+                if marker.text then marker.text:Remove() end
+                if marker.glow then marker.glow:Remove() end
+                if marker.shadow then marker.shadow:Remove() end
+            end)
+            HitMarkerSystem.hitMarkers[id] = nil
+        end
+    end
+end
+
+function HitMarkerSystem.clearAll()
+    for id, marker in pairs(HitMarkerSystem.hitMarkers) do
+        pcall(function()
+            if marker.text then marker.text:Remove() end
+            if marker.glow then marker.glow:Remove() end
+            if marker.shadow then marker.shadow:Remove() end
+        end)
+        HitMarkerSystem.hitMarkers[id] = nil
+    end
+end
+
+function HitMarkerSystem.show(damage, targetCharacter, hitPart, flags)
+    if not flags.HitMarkersEnabled then return end
+    if not targetCharacter or not targetCharacter.Parent then return end
+    
+    local isHeadshot = hitPart and (hitPart.Name == "Head" or string.find(hitPart.Name, "Head"))
+    
+    if isHeadshot and flags.HitMarkerHeadshotColor then
+        local headshotColor = flags.HitMarkerHeadshotColor.Color or Color3.fromRGB(255, 200, 50)
+        local oldColor = flags.HitMarkerColor
+        flags.HitMarkerColor = {Color = headshotColor, Transparency = 1}
+        HitMarkerSystem.createHitMarker(damage, targetCharacter, hitPart, flags)
+        flags.HitMarkerColor = oldColor
+    else
+        HitMarkerSystem.createHitMarker(damage, targetCharacter, hitPart, flags)
+    end
+end
+
+-- Start update loop
+task.spawn(function()
+    while true do
+        HitMarkerSystem.updateHitMarkers()
+        task.wait()
+    end
+end)
+
+-- Make globally accessible
+_G.HitMarkerSystem = HitMarkerSystem
+_G.clearAllHitMarkers = HitMarkerSystem.clearAll
+_G.showHitMarker = HitMarkerSystem.show
+
+print("Hit Marker System Loaded!")
