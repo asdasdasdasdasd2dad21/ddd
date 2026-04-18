@@ -1,145 +1,100 @@
 -- ==========================================
--- FORTNITE-STYLE HIT MARKERS (ULTRA FAST)
--- No lag, instant response
+-- ZERO DELAY HIT MARKERS (INSTANT)
+-- No animations, just appears and fades
 -- ==========================================
 
 local HitMarkerSystem = {}
 HitMarkerSystem.hitMarkers = {}
 HitMarkerSystem.hitMarkerIdCounter = 0
 
--- Use UI font (fastest, no loading)
-local FONT = Drawing.Fonts.UI
-
 function HitMarkerSystem.show(damage, targetCharacter, hitPart, flags)
     if not flags.HitMarkersEnabled then return end
     if not targetCharacter or not targetCharacter.Parent then return end
     
-    -- Get target screen position INSTANTLY
-    local camera = workspace.CurrentCamera
-    local targetPos = nil
+    -- Get head position IMMEDIATELY
     local head = targetCharacter:FindFirstChild("Head")
+    if not head then return end
     
-    if head then
-        targetPos = head.Position
-    else
-        local hrp = targetCharacter:FindFirstChild("HumanoidRootPart")
-        if hrp then targetPos = hrp.Position end
-    end
-    
-    if not targetPos then return end
-    
-    local screenPos, onScreen = camera:WorldToViewportPoint(targetPos)
+    local camera = workspace.CurrentCamera
+    local screenPos, onScreen = camera:WorldToViewportPoint(head.Position)
     if not onScreen or screenPos.Z <= 0 then return end
     
-    -- Get settings
+    -- Settings
     local color = flags.HitMarkerColor and flags.HitMarkerColor.Color or Color3.fromRGB(255, 255, 255)
     local size = flags.HitMarkerSize or 55
-    local duration = flags.HitMarkerDuration or 0.4
-    local isHeadshot = hitPart and (hitPart.Name == "Head")
-    
-    -- Format text
-    local damageText = "+" .. math.floor(damage)
-    local finalSize = size
-    if isHeadshot then finalSize = size + 12 end
+    local duration = flags.HitMarkerDuration or 0.35
+    local isHeadshot = hitPart and hitPart.Name == "Head"
     
     -- Random offset around head
-    local angle = math.random() * math.pi * 2
-    local distance = math.random(20, 60)
-    local offsetX = math.cos(angle) * distance
-    local offsetY = math.sin(angle) * distance * 0.5 - 10
+    local offsetX = math.random(-40, 40)
+    local offsetY = math.random(-30, 30)
     
     -- Create text INSTANTLY
     local text = Drawing.new("Text")
-    text.Text = damageText
-    text.Size = finalSize
-    text.Color = color
+    text.Text = "+" .. math.floor(damage)
+    text.Size = isHeadshot and size + 10 or size
+    text.Color = isHeadshot and Color3.fromRGB(255, 200, 50) or color
     text.Center = true
     text.Outline = true
     text.OutlineColor = Color3.fromRGB(0, 0, 0)
     text.OutlineThickness = 4
-    text.Font = FONT
+    text.Font = Drawing.Fonts.UI
     text.Visible = true
-    text.ZIndex = 10
     text.Position = Vector2.new(screenPos.X + offsetX, screenPos.Y + offsetY)
     
     -- Shadow
     local shadow = Drawing.new("Text")
-    shadow.Text = damageText
-    shadow.Size = finalSize
+    shadow.Text = text.Text
+    shadow.Size = text.Size
     shadow.Color = Color3.fromRGB(0, 0, 0)
     shadow.Center = true
     shadow.Outline = false
-    shadow.Font = FONT
+    shadow.Font = Drawing.Fonts.UI
     shadow.Visible = true
     shadow.Transparency = 0.5
-    shadow.ZIndex = 9
     shadow.Position = Vector2.new(text.Position.X + 3, text.Position.Y + 3)
     
     local id = HitMarkerSystem.hitMarkerIdCounter + 1
     HitMarkerSystem.hitMarkerIdCounter = id
-    
-    -- Store marker with animation data
-    local startX = text.Position.X
-    local startY = text.Position.Y
     local startTime = tick()
-    local floatX = math.random(-15, 15)
-    local floatY = math.random(-60, -40)
     
     HitMarkerSystem.hitMarkers[id] = {
         text = text,
         shadow = shadow,
         startTime = startTime,
         duration = duration,
-        startX = startX,
-        startY = startY,
-        floatX = floatX,
-        floatY = floatY,
-        startSize = finalSize
+        startX = text.Position.X,
+        startY = text.Position.Y
     }
 end
 
--- Update loop (runs every frame)
+-- Simple update loop
 task.spawn(function()
     while true do
         local now = tick()
         for id, marker in pairs(HitMarkerSystem.hitMarkers) do
             local elapsed = now - marker.startTime
-            local t = math.clamp(elapsed / marker.duration, 0, 1)
+            local t = elapsed / marker.duration
             
-            -- Fast fade (starts at 30%)
-            local alpha = 1
-            if t > 0.3 then
-                alpha = 1 - ((t - 0.3) / 0.7)
-                alpha = math.clamp(alpha, 0, 1)
-            end
-            
-            -- Position (float up)
-            local newX = marker.startX + (marker.floatX * t)
-            local newY = marker.startY - (math.abs(marker.floatY) * t)
-            
-            -- Size (shrink slightly)
-            local newSize = marker.startSize * (1 - t * 0.15)
-            
-            pcall(function()
-                if marker.text then
-                    marker.text.Position = Vector2.new(newX, newY)
-                    marker.text.Size = newSize
-                    marker.text.Transparency = 1 - alpha
-                end
-                if marker.shadow then
-                    marker.shadow.Position = Vector2.new(newX + 3, newY + 3)
-                    marker.shadow.Size = newSize
-                    marker.shadow.Transparency = 0.5 * (1 - alpha)
-                end
-            end)
-            
-            -- Remove when done
-            if elapsed >= marker.duration then
+            if t >= 1 then
                 pcall(function()
                     if marker.text then marker.text:Remove() end
                     if marker.shadow then marker.shadow:Remove() end
                 end)
                 HitMarkerSystem.hitMarkers[id] = nil
+            else
+                -- Simple fade
+                local alpha = 1 - t
+                pcall(function()
+                    if marker.text then
+                        marker.text.Transparency = 1 - alpha
+                        marker.text.Position = Vector2.new(marker.startX, marker.startY - (t * 40))
+                    end
+                    if marker.shadow then
+                        marker.shadow.Transparency = 0.5 * (1 - alpha)
+                        marker.shadow.Position = Vector2.new(marker.startX + 3, marker.startY + 3 - (t * 40))
+                    end
+                end)
             end
         end
         task.wait()
@@ -160,4 +115,4 @@ _G.HitMarkerSystem = HitMarkerSystem
 _G.clearAllHitMarkers = HitMarkerSystem.clearAll
 _G.showHitMarker = HitMarkerSystem.show
 
-print("ULTRA FAST Hit Marker System Loaded!")
+print("ZERO DELAY Hit Marker System Loaded!")
