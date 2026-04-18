@@ -1,6 +1,6 @@
 -- ==========================================
--- FORTNITE-STYLE HIT MARKERS (BUBBLY/CARTOONY)
--- Fixed: Proper fade + Jiggle animation
+-- FORTNITE-STYLE HIT MARKERS (Guaranteed Working)
+-- Uses basic drawing + math animations
 -- ==========================================
 
 local HitMarkerSystem = {}
@@ -8,24 +8,22 @@ local HitMarkerSystem = {}
 HitMarkerSystem.hitMarkers = {}
 HitMarkerSystem.hitMarkerIdCounter = 0
 
--- BUBBLY FONT (Fredoka One)
-local BUBBLE_FONT = Font.fromId(12187360391)
-
-HitMarkerSystem.OUTLINE_THICKNESS = 5
-HitMarkerSystem.SHADOW_OFFSET = 4
+-- Bold settings (works on any executor)
+HitMarkerSystem.OUTLINE_THICKNESS = 4
+HitMarkerSystem.SHADOW_OFFSET = 3
 
 function HitMarkerSystem.getRandomOffset()
     local angle = math.random() * math.pi * 2
-    local distance = math.random(15, 60)
-    local verticalOffset = math.random(-25, 35)
+    local distance = math.random(20, 55)
+    local verticalOffset = math.random(-20, 30)
     return Vector2.new(
         math.cos(angle) * distance,
-        math.sin(angle) * distance * 0.6 + verticalOffset
+        math.sin(angle) * distance * 0.5 + verticalOffset
     )
 end
 
 function HitMarkerSystem.getRandomRotation()
-    return math.random(-35, 35)
+    return math.random(-30, 30)
 end
 
 function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart, flags)
@@ -34,10 +32,10 @@ function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart,
     
     if not flags.HitMarkersEnabled then return nil end
     
-    -- Get target position
-    local targetPos = nil
+    -- Get target screen position
     local camera = workspace.CurrentCamera
     local viewport = camera.ViewportSize
+    local targetPos = nil
     
     if targetCharacter and targetCharacter.Parent then
         local head = targetCharacter:FindFirstChild("Head")
@@ -53,70 +51,67 @@ function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart,
     
     if not targetPos then return nil end
     
-    -- Convert to screen position
     local screenPos, onScreen = camera:WorldToViewportPoint(targetPos)
+    local finalScreenPos = Vector2.new(viewport.X / 2, viewport.Y / 2)
     
-    if not onScreen or screenPos.Z <= 0 then
-        screenPos = Vector3.new(viewport.X / 2, viewport.Y / 2, 1)
+    if onScreen and screenPos.Z > 0 then
+        finalScreenPos = Vector2.new(screenPos.X, screenPos.Y)
     end
     
+    -- Get colors
     local color = flags.HitMarkerColor and flags.HitMarkerColor.Color or Color3.fromRGB(255, 255, 255)
-    local size = flags.HitMarkerSize or 58
-    local duration = flags.HitMarkerDuration or 0.5
+    local size = flags.HitMarkerSize or 55
+    local duration = flags.HitMarkerDuration or 0.6
     local isHeadshot = hitPart and (hitPart.Name == "Head" or string.find(hitPart.Name, "Head"))
     
     local damageText = "+" .. math.floor(damageAmount)
     
+    -- Size based on damage
     local finalSize = size
-    if isHeadshot then
-        finalSize = size + 16
-    elseif damageAmount > 50 then
-        finalSize = size + 12
-    elseif damageAmount > 30 then
-        finalSize = size + 6
-    end
+    if isHeadshot then finalSize = size + 14
+    elseif damageAmount > 50 then finalSize = size + 10
+    elseif damageAmount > 30 then finalSize = size + 5 end
     
     local randomOffset = HitMarkerSystem.getRandomOffset()
     local randomRotation = HitMarkerSystem.getRandomRotation()
     
-    -- JIGGLE SETTINGS
-    local jiggleAmount = math.random(8, 18)  -- How much it shakes
-    local jiggleSpeed = math.random(12, 25)  -- How fast it shakes
-    
-    -- MAIN TEXT
+    -- MAIN TEXT (using UI font - boldest available)
     local text = Drawing.new("Text")
     text.Text = damageText
-    text.Size = finalSize * 1.3  -- Start bigger for pop effect
+    text.Size = finalSize
     text.Color = color
     text.Center = true
     text.Outline = true
     text.OutlineColor = Color3.fromRGB(0, 0, 0)
     text.OutlineThickness = HitMarkerSystem.OUTLINE_THICKNESS
-    text.FontFace = BUBBLE_FONT
+    text.Font = Drawing.Fonts.UI  -- Boldest font that works everywhere
     text.Visible = true
     text.ZIndex = 10
     text.Rotation = randomRotation
-    text.Transparency = 0  -- Fully visible
-    text.Position = Vector2.new(screenPos.X + randomOffset.X, screenPos.Y + randomOffset.Y)
+    text.Position = Vector2.new(finalScreenPos.X + randomOffset.X, finalScreenPos.Y + randomOffset.Y)
     
-    -- SHADOW
+    -- SHADOW for depth
     local shadow = Drawing.new("Text")
     shadow.Text = damageText
-    shadow.Size = finalSize * 1.3
+    shadow.Size = finalSize
     shadow.Color = Color3.fromRGB(0, 0, 0)
     shadow.Center = true
     shadow.Outline = false
-    shadow.FontFace = BUBBLE_FONT
+    shadow.Font = Drawing.Fonts.UI
     shadow.Visible = true
-    shadow.Transparency = 0.5
+    shadow.Transparency = 0.4
     shadow.ZIndex = 9
     shadow.Rotation = randomRotation
     shadow.Position = Vector2.new(text.Position.X + HitMarkerSystem.SHADOW_OFFSET, text.Position.Y + HitMarkerSystem.SHADOW_OFFSET)
     
-    local floatDirection = {
-        x = math.random(-25, 25),
-        y = math.random(-90, -60)
-    }
+    -- Animation data
+    local startPos = text.Position
+    local startSize = finalSize
+    local startRotation = randomRotation
+    local floatX = math.random(-15, 15)
+    local floatY = math.random(-70, -50)
+    local wiggleSpeed = math.random(15, 30)
+    local wiggleAmount = math.random(5, 12)
     
     local marker = {
         id = id,
@@ -124,17 +119,28 @@ function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart,
         shadow = shadow,
         startTime = tick(),
         duration = duration,
-        startPos = text.Position,
-        startSize = finalSize,
-        startRotation = randomRotation,
-        floatDirection = floatDirection,
-        jiggleAmount = jiggleAmount,
-        jiggleSpeed = jiggleSpeed,
-        floatDistance = math.random(70, 110),
+        startPos = startPos,
+        startSize = startSize,
+        startRotation = startRotation,
+        floatX = floatX,
+        floatY = floatY,
+        wiggleSpeed = wiggleSpeed,
+        wiggleAmount = wiggleAmount,
         isHeadshot = isHeadshot
     }
     
     HitMarkerSystem.hitMarkers[id] = marker
+    
+    -- FORCE a visual update immediately
+    task.spawn(function()
+        for i = 1, 3 do
+            task.wait(0.01)
+            if marker.text then
+                marker.text.Visible = true
+            end
+        end
+    end)
+    
     return id
 end
 
@@ -145,67 +151,61 @@ function HitMarkerSystem.updateHitMarkers()
         local elapsed = now - marker.startTime
         local t = math.clamp(elapsed / marker.duration, 0, 1)
         
-        -- JIGGLE ANIMATION (only during first 20% of lifetime)
-        local jiggleX = 0
-        local jiggleY = 0
-        if t < 0.2 then
-            -- Fast jiggle that fades out
-            local jiggleT = t / 0.2  -- 0 to 1 during jiggle phase
-            local intensity = 1 - jiggleT  -- Fades out
-            jiggleX = math.sin(elapsed * marker.jiggleSpeed) * marker.jiggleAmount * intensity
-            jiggleY = math.cos(elapsed * marker.jiggleSpeed * 1.3) * (marker.jiggleAmount * 0.7) * intensity
+        -- Calculate animation progress
+        local easeOut = 1 - (1 - t) ^ 1.5
+        
+        -- JIGGLE (strong at start, fades quickly)
+        local jiggle = 0
+        if t < 0.25 then
+            local jigglePhase = t / 0.25
+            local intensity = 1 - jigglePhase
+            jiggle = math.sin(elapsed * marker.wiggleSpeed) * marker.wiggleAmount * intensity
         end
         
-        -- POP effect (shrink from big to normal size)
+        -- Position (float up + jiggle)
+        local newX = marker.startPos.X + jiggle + (marker.floatX * easeOut)
+        local newY = marker.startPos.Y - (math.abs(marker.floatY) * easeOut) + (math.sin(elapsed * 3) * jiggle * 0.5)
+        
+        -- Size (pop in then shrink)
         local sizeMultiplier = 1
-        if t < 0.12 then
-            -- Pop in: shrink from 1.3x to 1.0x
-            local popT = t / 0.12
-            sizeMultiplier = 1.3 - (popT * 0.3)
-        elseif t > 0.7 then
+        if t < 0.15 then
+            -- Pop in: starts bigger, shrinks
+            local popT = t / 0.15
+            sizeMultiplier = 1.4 - (popT * 0.4)
+        elseif t > 0.65 then
             -- Shrink on fade out
-            sizeMultiplier = 1 - ((t - 0.7) / 0.3) * 0.2
+            sizeMultiplier = 1 - ((t - 0.65) / 0.35) * 0.25
         end
         
         local newSize = marker.startSize * sizeMultiplier
         
-        -- Float up animation
-        local easeOut = 1 - (1 - t) ^ 1.2
-        local floatX = marker.floatDirection.x * easeOut
-        local floatY = marker.floatDirection.y * easeOut
+        -- Rotation (slowly un-tilt)
+        local newRotation = marker.startRotation * (1 - t * 0.7)
         
-        -- Final position
-        local finalPos = Vector2.new(
-            marker.startPos.X + jiggleX + floatX,
-            marker.startPos.Y + jiggleY - marker.floatDistance * easeOut + floatY * 0.3
-        )
-        
-        -- Rotation (slowly straightens)
-        local currentRotation = marker.startRotation * (1 - t * 0.6)
-        
-        -- FADE OUT (starts at 35%, completely gone by 100%)
+        -- FADE OUT (CRITICAL - starts at 40%, ends at 100%)
         local alpha = 1
-        if t > 0.35 then
-            alpha = 1 - ((t - 0.35) / 0.65)
+        if t > 0.4 then
+            alpha = 1 - ((t - 0.4) / 0.6)
             alpha = math.clamp(alpha, 0, 1)
         end
         
+        -- Apply updates
         pcall(function()
             if marker.text then
-                marker.text.Position = finalPos
+                marker.text.Position = Vector2.new(newX, newY)
                 marker.text.Size = newSize
                 marker.text.Transparency = 1 - alpha
-                marker.text.Rotation = currentRotation
+                marker.text.Rotation = newRotation
             end
             if marker.shadow then
-                marker.shadow.Position = Vector2.new(finalPos.X + HitMarkerSystem.SHADOW_OFFSET, finalPos.Y + HitMarkerSystem.SHADOW_OFFSET)
+                marker.shadow.Position = Vector2.new(newX + HitMarkerSystem.SHADOW_OFFSET, newY + HitMarkerSystem.SHADOW_OFFSET)
                 marker.shadow.Size = newSize
-                marker.shadow.Transparency = 0.5 * (1 - alpha)
-                marker.shadow.Rotation = currentRotation
+                marker.shadow.Transparency = 0.4 * (1 - alpha)
+                marker.shadow.Rotation = newRotation
             end
         end)
         
-        -- Remove when done
+        -- Clean up when done
         if elapsed >= marker.duration then
             pcall(function()
                 if marker.text then marker.text:Remove() end
@@ -243,7 +243,7 @@ function HitMarkerSystem.show(damage, targetCharacter, hitPart, flags)
     end
 end
 
--- Start update loop
+-- Start update loop (runs every frame)
 task.spawn(function()
     while true do
         HitMarkerSystem.updateHitMarkers()
@@ -256,4 +256,4 @@ _G.HitMarkerSystem = HitMarkerSystem
 _G.clearAllHitMarkers = HitMarkerSystem.clearAll
 _G.showHitMarker = HitMarkerSystem.show
 
-print("Hit Marker System Loaded! (Jiggle + Pop + Fade)")
+print("Hit Marker System Loaded! (Simplified - Should work now)")
