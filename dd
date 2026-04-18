@@ -1,28 +1,35 @@
 -- ==========================================
 -- FORTNITE-STYLE HIT MARKERS (Cartoon/Bold)
+-- Random positions around head + Tilted/Sideways
 -- ==========================================
 
 local HitMarkerSystem = {}
 
 HitMarkerSystem.hitMarkers = {}
 HitMarkerSystem.hitMarkerIdCounter = 0
-HitMarkerSystem.FORTNITE_OUTLINE_THICKNESS = 4  -- Thicker outline for bold look
+HitMarkerSystem.FORTNITE_OUTLINE_THICKNESS = 4
 HitMarkerSystem.FORTNITE_SHADOW_OFFSET = 3
 
--- CARTOON/BUBBLE FONT OPTIONS
--- Roblox doesn't have native bubble fonts, but these are the boldest available
--- Fonts: UI (boldest), Plex (clean), Gotham (rounded), SourceSans (default)
-HitMarkerSystem.CARTOON_FONTS = {
-    Drawing.Fonts.UI,        -- UI font (boldest, most cartoony)
-    Drawing.Fonts.Plex,      -- Plex (bold, clean)
-    Drawing.Fonts.Monospace, -- Monospace (blocky)
-}
-
--- Get random offset around head
+-- Get RANDOM position around the head (360 degrees, various distances)
 function HitMarkerSystem.getRandomOffset()
+    -- Random angle (0 to 360 degrees) for full circle around head
     local angle = math.random() * math.pi * 2
-    local distance = math.random(10, 35)
-    return Vector2.new(math.cos(angle) * distance, math.sin(angle) * distance - 15)
+    -- Random distance from head (closer or further)
+    local distance = math.random(20, 70)
+    -- Random vertical offset (higher or lower on head)
+    local verticalOffset = math.random(-30, 40)
+    
+    return Vector2.new(
+        math.cos(angle) * distance,  -- X: left/right
+        math.sin(angle) * distance * 0.7 + verticalOffset  -- Y: up/down with less vertical spread
+    )
+end
+
+-- Get RANDOM rotation (tilted sideways)
+function HitMarkerSystem.getRandomRotation()
+    -- Random tilt between -45 and 45 degrees
+    -- Negative = tilted left, Positive = tilted right
+    return math.random(-45, 45)
 end
 
 -- Create hit marker
@@ -34,23 +41,34 @@ function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart,
     
     local color = flags.HitMarkerColor and flags.HitMarkerColor.Color or Color3.fromRGB(255, 255, 255)
     local size = flags.HitMarkerSize or 52
-    local duration = flags.HitMarkerDuration or 0.35  -- FASTER FADE (was 0.55)
+    local duration = flags.HitMarkerDuration or 0.4
     local isHeadshot = hitPart and (hitPart.Name == "Head" or string.find(hitPart.Name, "Head"))
     
-    -- Round damage to integer for cleaner look
     local damageText = "+" .. math.floor(damageAmount)
     
-    -- Size based on damage (bigger damage = bigger numbers)
+    -- Size based on damage
     local finalSize = size
     if isHeadshot then
-        finalSize = size + 12  -- Headshots much bigger
+        finalSize = size + 12
     elseif damageAmount > 50 then
         finalSize = size + 8
     elseif damageAmount > 30 then
         finalSize = size + 4
     end
     
-    -- MAIN TEXT (bold, cartoony)
+    -- RANDOM POSITION AROUND HEAD (different per hit)
+    local randomOffset = HitMarkerSystem.getRandomOffset()
+    
+    -- RANDOM ROTATION (tilted sideways)
+    local randomRotation = HitMarkerSystem.getRandomRotation()
+    
+    -- RANDOM FLOAT DIRECTION (some go up-left, some up-right, some straight up)
+    local floatDirection = {
+        x = math.random(-15, 15),  -- Random horizontal drift
+        y = math.random(-80, -50)  -- Always up but random amount
+    }
+    
+    -- MAIN TEXT (tilted/rotated)
     local text = Drawing.new("Text")
     text.Text = damageText
     text.Size = finalSize
@@ -59,35 +77,37 @@ function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart,
     text.Outline = true
     text.OutlineColor = Color3.fromRGB(0, 0, 0)
     text.OutlineThickness = HitMarkerSystem.FORTNITE_OUTLINE_THICKNESS
-    text.Font = HitMarkerSystem.Monospace  -- UI font (boldest)
+    text.Font = Drawing.Fonts.Monospace
     text.Visible = true
     text.ZIndex = 10
+    text.Rotation = randomRotation  -- APPLY RANDOM TILT
     
-    -- OUTER GLOW
+    -- GLOW (same rotation)
     local glow = Drawing.new("Text")
     glow.Text = damageText
     glow.Size = finalSize + 6
     glow.Color = Color3.fromRGB(0, 0, 0)
     glow.Center = true
     glow.Outline = false
-    glow.Font = HitMarkerSystem.CARTOON_FONTS[1]
+    glow.Font = Drawing.Fonts.Monospace
     glow.Visible = true
     glow.Transparency = 0.6
     glow.ZIndex = 8
+    glow.Rotation = randomRotation
     
-    -- SHADOW
+    -- SHADOW (same rotation)
     local shadow = Drawing.new("Text")
     shadow.Text = damageText
     shadow.Size = finalSize
     shadow.Color = Color3.fromRGB(0, 0, 0)
     shadow.Center = true
     shadow.Outline = false
-    shadow.Font = HitMarkerSystem.CARTOON_FONTS[1]
+    shadow.Font = Drawing.Fonts.Monospace
     shadow.Visible = true
     shadow.Transparency = 0.4
     shadow.ZIndex = 9
+    shadow.Rotation = randomRotation
     
-    local randomOffset = HitMarkerSystem.getRandomOffset()
     local marker = {
         id = id,
         text = text,
@@ -99,9 +119,10 @@ function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart,
         targetPart = hitPart or (targetCharacter and targetCharacter:FindFirstChild("Head")),
         startSize = finalSize,
         startOffset = randomOffset,
-        wiggleAmount = math.random(8, 20),
-        floatDistance = math.random(50, 85),
-        rotation = math.random(-20, 20),
+        startRotation = randomRotation,
+        floatDirection = floatDirection,
+        wiggleAmount = math.random(5, 15),
+        floatDistance = math.random(60, 100),
         initialScreenPos = nil,
         isHeadshot = isHeadshot
     }
@@ -120,6 +141,7 @@ function HitMarkerSystem.updateHitMarkers()
         local elapsed = now - marker.startTime
         local t = math.clamp(elapsed / marker.duration, 0, 1)
         
+        -- Check if target still exists
         local targetPos = nil
         local targetExists = false
         
@@ -137,6 +159,7 @@ function HitMarkerSystem.updateHitMarkers()
             end
         end
         
+        -- Calculate screen position
         local screenPos = Vector2.new(viewport.X / 2, viewport.Y / 2)
         local onScreen = false
         
@@ -155,40 +178,46 @@ function HitMarkerSystem.updateHitMarkers()
             t = math.min(t * 1.5, 1)
         end
         
+        -- Apply random offset (different position per hit)
         local offset = marker.startOffset
-        -- FASTER EASING
-        local easeOut = 1 - (1 - t) ^ 1.2
-        local floatDistance = marker.floatDistance * easeOut
         
-        -- POP effect (stronger bounce)
+        -- Float in random direction (not just straight up)
+        local easeOut = 1 - (1 - t) ^ 1.3
+        local floatX = marker.floatDirection.x * easeOut
+        local floatY = marker.floatDirection.y * easeOut
+        
+        -- Bounce effect at start
         local bounce = 0
         if t < 0.2 then
-            bounce = math.sin(t * math.pi * 3) * (1 - t) * 18
+            bounce = math.sin(t * math.pi * 3) * (1 - t) * 15
         end
         
-        local wiggle = math.sin(t * math.pi * 5) * (1 - t) * marker.wiggleAmount
+        -- Wiggle effect
+        local wiggle = math.sin(t * math.pi * 6) * (1 - t) * marker.wiggleAmount
         
+        -- Final position (floats in random direction)
         local finalPos = Vector2.new(
-            screenPos.X + offset.X + wiggle + bounce,
-            screenPos.Y + offset.Y - floatDistance
+            screenPos.X + offset.X + wiggle + bounce + floatX,
+            screenPos.Y + offset.Y - marker.floatDistance * easeOut + floatY * 0.5
         )
         
-        -- Size animation: POP IN big, then shrink
+        -- Size animation: POP IN then shrink
         local sizeMultiplier = 1
         if t < 0.12 then
-            sizeMultiplier = 1 + (0.8 * (1 - t / 0.12))
+            sizeMultiplier = 1 + (0.7 * (1 - t / 0.12))
         elseif t > 0.7 then
             sizeMultiplier = 1 - ((t - 0.7) / 0.3) * 0.2
         end
         
         local newSize = marker.startSize * sizeMultiplier
         
-        local rotation = marker.rotation * (1 - t) * 0.3
+        -- Rotation animation (un-rotate slightly as it fades)
+        local currentRotation = marker.startRotation * (1 - t * 0.5)
         
-        -- FASTER FADE (starts fading earlier but faster)
+        -- Fade out
         local alpha = 1
-        if t > 0.45 then
-            alpha = 1 - ((t - 0.45) / 0.55)
+        if t > 0.5 then
+            alpha = 1 - ((t - 0.5) / 0.5)
             alpha = math.clamp(alpha, 0, 1)
         end
         
@@ -197,19 +226,19 @@ function HitMarkerSystem.updateHitMarkers()
                 marker.text.Position = finalPos
                 marker.text.Size = newSize
                 marker.text.Transparency = 1 - alpha
-                pcall(function() marker.text.Rotation = rotation end)
+                marker.text.Rotation = currentRotation
             end
             if marker.glow then
                 marker.glow.Position = Vector2.new(finalPos.X, finalPos.Y)
                 marker.glow.Size = newSize + 6
                 marker.glow.Transparency = 0.6 * (1 - alpha * 0.5)
-                pcall(function() marker.glow.Rotation = rotation end)
+                marker.glow.Rotation = currentRotation
             end
             if marker.shadow then
                 marker.shadow.Position = Vector2.new(finalPos.X + HitMarkerSystem.FORTNITE_SHADOW_OFFSET, finalPos.Y + HitMarkerSystem.FORTNITE_SHADOW_OFFSET)
                 marker.shadow.Size = newSize
                 marker.shadow.Transparency = 0.4 * (1 - alpha)
-                pcall(function() marker.shadow.Rotation = rotation end)
+                marker.shadow.Rotation = currentRotation
             end
         end)
         
@@ -265,4 +294,4 @@ _G.HitMarkerSystem = HitMarkerSystem
 _G.clearAllHitMarkers = HitMarkerSystem.clearAll
 _G.showHitMarker = HitMarkerSystem.show
 
-print("Hit Marker System Loaded! (Cartoon/Bold Font)")
+print("Hit Marker System Loaded! (Random positions + Tilted rotation)")
