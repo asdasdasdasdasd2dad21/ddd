@@ -1,6 +1,6 @@
 -- ==========================================
 -- FORTNITE-STYLE HIT MARKERS (BUBBLY/CARTOONY)
--- Custom font support + 3D depth
+-- Fixed: Follows target head correctly
 -- ==========================================
 
 local HitMarkerSystem = {}
@@ -8,18 +8,12 @@ local HitMarkerSystem = {}
 HitMarkerSystem.hitMarkers = {}
 HitMarkerSystem.hitMarkerIdCounter = 0
 
--- CUSTOM FONT SETTINGS
--- You need to upload a TTF font to Roblox and put the asset ID here
--- Example: HitMarkerSystem.FONT_ID = "rbxassetid://12187360391"
--- For now, using the boldest available font + manual bold effect
-HitMarkerSystem.FONT_ID = nil  -- Set this to your uploaded font asset ID
+-- BUBBLY FONT (Fredoka One)
+local BUBBLE_FONT = Font.fromId(12187360391)
 
--- Manual bold effect (thicker outlines)
 HitMarkerSystem.OUTLINE_THICKNESS = 5
 HitMarkerSystem.SHADOW_OFFSET = 4
-HitMarkerSystem.GLOW_SIZE = 8
 
--- Get random position around head
 function HitMarkerSystem.getRandomOffset()
     local angle = math.random() * math.pi * 2
     local distance = math.random(15, 60)
@@ -30,40 +24,48 @@ function HitMarkerSystem.getRandomOffset()
     )
 end
 
--- Get random rotation
 function HitMarkerSystem.getRandomRotation()
     return math.random(-35, 35)
 end
 
--- Create custom font if available
-local function getCustomFont()
-    if HitMarkerSystem.FONT_ID and HitMarkerSystem.CUSTOM_FONT == nil then
-        local success, font = pcall(function()
-            return Font.new(HitMarkerSystem.FONT_ID, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-        end)
-        if success then
-            HitMarkerSystem.CUSTOM_FONT = font
-        end
-    end
-    return HitMarkerSystem.CUSTOM_FONT
-end
-
--- Create hit marker with BUBBLY/CARTOONY style
 function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart, flags)
     HitMarkerSystem.hitMarkerIdCounter = HitMarkerSystem.hitMarkerIdCounter + 1
     local id = HitMarkerSystem.hitMarkerIdCounter
     
     if not flags.HitMarkersEnabled then return nil end
     
+    -- Get the target's current position immediately
+    local targetPos = nil
+    if targetCharacter and targetCharacter.Parent then
+        local head = targetCharacter:FindFirstChild("Head")
+        if head then
+            targetPos = head.Position
+        else
+            local hrp = targetCharacter:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                targetPos = hrp.Position
+            end
+        end
+    end
+    
+    if not targetPos then return nil end
+    
+    -- Convert to screen position right away
+    local camera = workspace.CurrentCamera
+    local screenPos, onScreen = camera:WorldToViewportPoint(targetPos)
+    
+    if not onScreen or screenPos.Z <= 0 then
+        -- Off screen, use center as fallback
+        screenPos = Vector3.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2, 1)
+    end
+    
     local color = flags.HitMarkerColor and flags.HitMarkerColor.Color or Color3.fromRGB(255, 255, 255)
     local size = flags.HitMarkerSize or 58
     local duration = flags.HitMarkerDuration or 0.45
     local isHeadshot = hitPart and (hitPart.Name == "Head" or string.find(hitPart.Name, "Head"))
     
-    -- Format damage (no decimals)
     local damageText = "+" .. math.floor(damageAmount)
     
-    -- Dynamic sizing
     local finalSize = size
     if isHeadshot then
         finalSize = size + 16
@@ -73,10 +75,10 @@ function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart,
         finalSize = size + 6
     end
     
-    -- Try to use custom font, fallback to Monospace
-    local customFont = getCustomFont()
+    local randomOffset = HitMarkerSystem.getRandomOffset()
+    local randomRotation = HitMarkerSystem.getRandomRotation()
     
-    -- MAIN TEXT (Bubbly/Cartoony style with heavy outline)
+    -- MAIN TEXT
     local text = Drawing.new("Text")
     text.Text = damageText
     text.Size = finalSize
@@ -85,89 +87,43 @@ function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart,
     text.Outline = true
     text.OutlineColor = Color3.fromRGB(0, 0, 0)
     text.OutlineThickness = HitMarkerSystem.OUTLINE_THICKNESS
-    text.Font = Drawing.Fonts.Monospace  -- Fallback font
+    text.FontFace = BUBBLE_FONT
     text.Visible = true
     text.ZIndex = 10
-    text.Rotation = HitMarkerSystem.getRandomRotation()
+    text.Rotation = randomRotation
+    text.Position = Vector2.new(screenPos.X + randomOffset.X, screenPos.Y + randomOffset.Y)
     
-    -- Apply custom font if available
-    if customFont then
-        pcall(function() text.FontFace = customFont end)
-    end
-    
-    -- OUTER GLOW (for depth)
-    local glow = Drawing.new("Text")
-    glow.Text = damageText
-    glow.Size = finalSize + HitMarkerSystem.GLOW_SIZE
-    glow.Color = Color3.fromRGB(0, 0, 0)
-    glow.Center = true
-    glow.Outline = false
-    glow.Font = Drawing.Fonts.Monospace
-    glow.Visible = true
-    glow.Transparency = 0.55
-    glow.ZIndex = 8
-    glow.Rotation = text.Rotation
-    if customFont then
-        pcall(function() glow.FontFace = customFont end)
-    end
-    
-    -- SHADOW (for 3D pop)
+    -- SHADOW
     local shadow = Drawing.new("Text")
     shadow.Text = damageText
     shadow.Size = finalSize
     shadow.Color = Color3.fromRGB(0, 0, 0)
     shadow.Center = true
     shadow.Outline = false
-    shadow.Font = Drawing.Fonts.Monospace
+    shadow.FontFace = BUBBLE_FONT
     shadow.Visible = true
     shadow.Transparency = 0.35
     shadow.ZIndex = 9
-    shadow.Rotation = text.Rotation
-    if customFont then
-        pcall(function() shadow.FontFace = customFont end)
-    end
+    shadow.Rotation = randomRotation
+    shadow.Position = Vector2.new(text.Position.X + HitMarkerSystem.SHADOW_OFFSET, text.Position.Y + HitMarkerSystem.SHADOW_OFFSET)
     
-    -- SECONDARY SHADOW (extra depth)
-    local shadow2 = Drawing.new("Text")
-    shadow2.Text = damageText
-    shadow2.Size = finalSize - 2
-    shadow2.Color = color
-    shadow2.Center = true
-    shadow2.Outline = false
-    shadow2.Font = Drawing.Fonts.Monospace
-    shadow2.Visible = true
-    shadow2.Transparency = 0.85
-    shadow2.ZIndex = 7
-    shadow2.Rotation = text.Rotation
-    if customFont then
-        pcall(function() shadow2.FontFace = customFont end)
-    end
-    
-    -- Random float direction
     local floatDirection = {
         x = math.random(-20, 20),
         y = math.random(-85, -55)
     }
     
-    local randomOffset = HitMarkerSystem.getRandomOffset()
-    
     local marker = {
         id = id,
         text = text,
-        glow = glow,
         shadow = shadow,
-        shadow2 = shadow2,
         startTime = tick(),
         duration = duration,
-        targetChar = targetCharacter,
-        targetPart = hitPart or (targetCharacter and targetCharacter:FindFirstChild("Head")),
-        startSize = finalSize,
+        startPos = text.Position,
         startOffset = randomOffset,
-        startRotation = text.Rotation,
+        startRotation = randomRotation,
         floatDirection = floatDirection,
         wiggleAmount = math.random(8, 18),
         floatDistance = math.random(70, 110),
-        initialScreenPos = nil,
         isHeadshot = isHeadshot
     }
     
@@ -175,74 +131,34 @@ function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart,
     return id
 end
 
--- Update hit markers
 function HitMarkerSystem.updateHitMarkers()
     local now = tick()
-    local camera = workspace.CurrentCamera
-    local viewport = camera.ViewportSize
     
     for id, marker in pairs(HitMarkerSystem.hitMarkers) do
         local elapsed = now - marker.startTime
         local t = math.clamp(elapsed / marker.duration, 0, 1)
         
-        -- Find target position
-        local targetPos = nil
-        local targetExists = false
-        
-        if marker.targetChar and marker.targetChar.Parent then
-            local head = marker.targetChar:FindFirstChild("Head")
-            if head and head:IsA("BasePart") then
-                targetPos = head.Position
-                targetExists = true
-            else
-                local hrp = marker.targetChar:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    targetPos = hrp.Position
-                    targetExists = true
-                end
-            end
-        end
-        
-        -- Screen position
-        local screenPos = Vector2.new(viewport.X / 2, viewport.Y / 2)
-        local onScreen = false
-        
-        if targetExists and targetPos then
-            local pos, onScrn = camera:WorldToViewportPoint(targetPos)
-            if onScrn and pos.Z > 0 then
-                screenPos = Vector2.new(pos.X, pos.Y)
-                onScreen = true
-            end
-        end
-        
-        if onScreen and not marker.initialScreenPos then
-            marker.initialScreenPos = screenPos
-        elseif not onScreen and marker.initialScreenPos then
-            screenPos = marker.initialScreenPos
-            t = math.min(t * 1.5, 1)
-        end
-        
-        -- Animation
-        local offset = marker.startOffset
+        -- Animation calculations
         local easeOut = 1 - (1 - t) ^ 1.2
         local floatX = marker.floatDirection.x * easeOut
         local floatY = marker.floatDirection.y * easeOut
         
-        -- BOUNCE (strong pop)
+        -- Bounce at start
         local bounce = 0
         if t < 0.15 then
             bounce = math.sin(t * math.pi * 2.8) * (1 - t) * 20
         end
         
-        -- WIGGLE
+        -- Wiggle
         local wiggle = math.sin(t * math.pi * 5) * (1 - t) * marker.wiggleAmount
         
+        -- Final position (float up and away from original position)
         local finalPos = Vector2.new(
-            screenPos.X + offset.X + wiggle + bounce + floatX,
-            screenPos.Y + offset.Y - marker.floatDistance * easeOut + floatY * 0.4
+            marker.startPos.X + wiggle + bounce + floatX,
+            marker.startPos.Y - marker.floatDistance * easeOut + floatY * 0.4
         )
         
-        -- Size animation (POP then shrink slightly)
+        -- Size animation
         local sizeMultiplier = 1
         if t < 0.12 then
             sizeMultiplier = 1 + (0.9 * (1 - t / 0.12))
@@ -251,14 +167,12 @@ function HitMarkerSystem.updateHitMarkers()
         end
         
         local newSize = marker.startSize * sizeMultiplier
-        
-        -- Rotation (slowly straightens)
         local currentRotation = marker.startRotation * (1 - t * 0.4)
         
-        -- Fade
+        -- Fade out (faster fade)
         local alpha = 1
-        if t > 0.48 then
-            alpha = 1 - ((t - 0.48) / 0.52)
+        if t > 0.4 then
+            alpha = 1 - ((t - 0.4) / 0.6)
             alpha = math.clamp(alpha, 0, 1)
         end
         
@@ -269,32 +183,19 @@ function HitMarkerSystem.updateHitMarkers()
                 marker.text.Transparency = 1 - alpha
                 marker.text.Rotation = currentRotation
             end
-            if marker.glow then
-                marker.glow.Position = Vector2.new(finalPos.X, finalPos.Y)
-                marker.glow.Size = newSize + HitMarkerSystem.GLOW_SIZE
-                marker.glow.Transparency = 0.55 * (1 - alpha * 0.4)
-                marker.glow.Rotation = currentRotation
-            end
             if marker.shadow then
                 marker.shadow.Position = Vector2.new(finalPos.X + HitMarkerSystem.SHADOW_OFFSET, finalPos.Y + HitMarkerSystem.SHADOW_OFFSET)
                 marker.shadow.Size = newSize
                 marker.shadow.Transparency = 0.35 * (1 - alpha)
                 marker.shadow.Rotation = currentRotation
             end
-            if marker.shadow2 then
-                marker.shadow2.Position = Vector2.new(finalPos.X - 2, finalPos.Y - 2)
-                marker.shadow2.Size = newSize - 2
-                marker.shadow2.Transparency = 0.85
-                marker.shadow2.Rotation = currentRotation
-            end
         end)
         
+        -- Remove when done
         if elapsed >= marker.duration then
             pcall(function()
                 if marker.text then marker.text:Remove() end
-                if marker.glow then marker.glow:Remove() end
                 if marker.shadow then marker.shadow:Remove() end
-                if marker.shadow2 then marker.shadow2:Remove() end
             end)
             HitMarkerSystem.hitMarkers[id] = nil
         end
@@ -305,9 +206,7 @@ function HitMarkerSystem.clearAll()
     for id, marker in pairs(HitMarkerSystem.hitMarkers) do
         pcall(function()
             if marker.text then marker.text:Remove() end
-            if marker.glow then marker.glow:Remove() end
             if marker.shadow then marker.shadow:Remove() end
-            if marker.shadow2 then marker.shadow2:Remove() end
         end)
         HitMarkerSystem.hitMarkers[id] = nil
     end
@@ -343,11 +242,4 @@ _G.HitMarkerSystem = HitMarkerSystem
 _G.clearAllHitMarkers = HitMarkerSystem.clearAll
 _G.showHitMarker = HitMarkerSystem.show
 
--- Optional: Set custom font ID from external source
-_G.SetHitMarkerFont = function(assetId)
-    HitMarkerSystem.FONT_ID = assetId
-    HitMarkerSystem.CUSTOM_FONT = nil
-    print("Hit marker font set to:", assetId)
-end
-
-print("Hit Marker System Loaded! (Bubbly/Cartoony style with 3D depth)")
+print("Hit Marker System Loaded! (Fixed - follows target head)")
