@@ -6,22 +6,26 @@ local HitMarkerSystem = {}
 
 HitMarkerSystem.hitMarkers = {}
 HitMarkerSystem.hitMarkerIdCounter = 0
-HitMarkerSystem.FORTNITE_OUTLINE_THICKNESS = 3
+HitMarkerSystem.FORTNITE_OUTLINE_THICKNESS = 4  -- Thicker outline for bold look
 HitMarkerSystem.FORTNITE_SHADOW_OFFSET = 3
 
--- Cartoon-style fonts
+-- CARTOON/BUBBLE FONT OPTIONS
+-- Roblox doesn't have native bubble fonts, but these are the boldest available
+-- Fonts: UI (boldest), Plex (clean), Gotham (rounded), SourceSans (default)
 HitMarkerSystem.CARTOON_FONTS = {
-    Drawing.Fonts.Plex,
-    Drawing.Fonts.Monospace,
-    Drawing.Fonts.UI2,
+    Drawing.Fonts.UI,        -- UI font (boldest, most cartoony)
+    Drawing.Fonts.Plex,      -- Plex (bold, clean)
+    Drawing.Fonts.Monospace, -- Monospace (blocky)
 }
 
+-- Get random offset around head
 function HitMarkerSystem.getRandomOffset()
     local angle = math.random() * math.pi * 2
-    local distance = math.random(15, 45)
-    return Vector2.new(math.cos(angle) * distance, math.sin(angle) * distance - 20)
+    local distance = math.random(10, 35)
+    return Vector2.new(math.cos(angle) * distance, math.sin(angle) * distance - 15)
 end
 
+-- Create hit marker
 function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart, flags)
     HitMarkerSystem.hitMarkerIdCounter = HitMarkerSystem.hitMarkerIdCounter + 1
     local id = HitMarkerSystem.hitMarkerIdCounter
@@ -29,16 +33,24 @@ function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart,
     if not flags.HitMarkersEnabled then return nil end
     
     local color = flags.HitMarkerColor and flags.HitMarkerColor.Color or Color3.fromRGB(255, 255, 255)
-    local size = flags.HitMarkerSize or 48
-    local duration = flags.HitMarkerDuration or 0.55
+    local size = flags.HitMarkerSize or 52
+    local duration = flags.HitMarkerDuration or 0.35  -- FASTER FADE (was 0.55)
     local isHeadshot = hitPart and (hitPart.Name == "Head" or string.find(hitPart.Name, "Head"))
     
+    -- Round damage to integer for cleaner look
     local damageText = "+" .. math.floor(damageAmount)
     
+    -- Size based on damage (bigger damage = bigger numbers)
     local finalSize = size
-    if isHeadshot then finalSize = size + 8
-    elseif damageAmount > 50 then finalSize = size + 4 end
+    if isHeadshot then
+        finalSize = size + 12  -- Headshots much bigger
+    elseif damageAmount > 50 then
+        finalSize = size + 8
+    elseif damageAmount > 30 then
+        finalSize = size + 4
+    end
     
+    -- MAIN TEXT (bold, cartoony)
     local text = Drawing.new("Text")
     text.Text = damageText
     text.Size = finalSize
@@ -47,21 +59,23 @@ function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart,
     text.Outline = true
     text.OutlineColor = Color3.fromRGB(0, 0, 0)
     text.OutlineThickness = HitMarkerSystem.FORTNITE_OUTLINE_THICKNESS
-    text.Font = HitMarkerSystem.CARTOON_FONTS[1]
+    text.Font = HitMarkerSystem.CARTOON_FONTS[1]  -- UI font (boldest)
     text.Visible = true
     text.ZIndex = 10
     
+    -- OUTER GLOW
     local glow = Drawing.new("Text")
     glow.Text = damageText
-    glow.Size = finalSize + 4
+    glow.Size = finalSize + 6
     glow.Color = Color3.fromRGB(0, 0, 0)
     glow.Center = true
     glow.Outline = false
     glow.Font = HitMarkerSystem.CARTOON_FONTS[1]
     glow.Visible = true
-    glow.Transparency = 0.7
+    glow.Transparency = 0.6
     glow.ZIndex = 8
     
+    -- SHADOW
     local shadow = Drawing.new("Text")
     shadow.Text = damageText
     shadow.Size = finalSize
@@ -70,7 +84,7 @@ function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart,
     shadow.Outline = false
     shadow.Font = HitMarkerSystem.CARTOON_FONTS[1]
     shadow.Visible = true
-    shadow.Transparency = 0.5
+    shadow.Transparency = 0.4
     shadow.ZIndex = 9
     
     local randomOffset = HitMarkerSystem.getRandomOffset()
@@ -85,9 +99,9 @@ function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart,
         targetPart = hitPart or (targetCharacter and targetCharacter:FindFirstChild("Head")),
         startSize = finalSize,
         startOffset = randomOffset,
-        wiggleAmount = math.random(5, 15),
-        floatDistance = math.random(60, 100),
-        rotation = math.random(-15, 15),
+        wiggleAmount = math.random(8, 20),
+        floatDistance = math.random(50, 85),
+        rotation = math.random(-20, 20),
         initialScreenPos = nil,
         isHeadshot = isHeadshot
     }
@@ -96,6 +110,7 @@ function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart,
     return id
 end
 
+-- Update hit markers
 function HitMarkerSystem.updateHitMarkers()
     local now = tick()
     local camera = workspace.CurrentCamera
@@ -141,34 +156,39 @@ function HitMarkerSystem.updateHitMarkers()
         end
         
         local offset = marker.startOffset
-        local easeOut = 1 - (1 - t) ^ 1.5
+        -- FASTER EASING
+        local easeOut = 1 - (1 - t) ^ 1.2
         local floatDistance = marker.floatDistance * easeOut
         
+        -- POP effect (stronger bounce)
         local bounce = 0
         if t < 0.2 then
-            bounce = math.sin(t * math.pi * 2.5) * (1 - t) * 12
+            bounce = math.sin(t * math.pi * 3) * (1 - t) * 18
         end
         
-        local wiggle = math.sin(t * math.pi * 4) * (1 - t) * marker.wiggleAmount
+        local wiggle = math.sin(t * math.pi * 5) * (1 - t) * marker.wiggleAmount
         
         local finalPos = Vector2.new(
             screenPos.X + offset.X + wiggle + bounce,
             screenPos.Y + offset.Y - floatDistance
         )
         
+        -- Size animation: POP IN big, then shrink
         local sizeMultiplier = 1
-        if t < 0.15 then
-            sizeMultiplier = 1 + (0.6 * (1 - t / 0.15))
+        if t < 0.12 then
+            sizeMultiplier = 1 + (0.8 * (1 - t / 0.12))
         elseif t > 0.7 then
-            sizeMultiplier = 1 + (0.15 * math.sin((t - 0.7) / 0.3 * math.pi))
+            sizeMultiplier = 1 - ((t - 0.7) / 0.3) * 0.2
         end
         
         local newSize = marker.startSize * sizeMultiplier
-        local rotation = marker.rotation * (1 - t) * 0.5
         
+        local rotation = marker.rotation * (1 - t) * 0.3
+        
+        -- FASTER FADE (starts fading earlier but faster)
         local alpha = 1
-        if t > 0.55 then
-            alpha = 1 - ((t - 0.55) / 0.45)
+        if t > 0.45 then
+            alpha = 1 - ((t - 0.45) / 0.55)
             alpha = math.clamp(alpha, 0, 1)
         end
         
@@ -181,14 +201,14 @@ function HitMarkerSystem.updateHitMarkers()
             end
             if marker.glow then
                 marker.glow.Position = Vector2.new(finalPos.X, finalPos.Y)
-                marker.glow.Size = newSize + 5
-                marker.glow.Transparency = 0.7 * (1 - alpha * 0.5)
+                marker.glow.Size = newSize + 6
+                marker.glow.Transparency = 0.6 * (1 - alpha * 0.5)
                 pcall(function() marker.glow.Rotation = rotation end)
             end
             if marker.shadow then
                 marker.shadow.Position = Vector2.new(finalPos.X + HitMarkerSystem.FORTNITE_SHADOW_OFFSET, finalPos.Y + HitMarkerSystem.FORTNITE_SHADOW_OFFSET)
                 marker.shadow.Size = newSize
-                marker.shadow.Transparency = 0.5 * (1 - alpha)
+                marker.shadow.Transparency = 0.4 * (1 - alpha)
                 pcall(function() marker.shadow.Rotation = rotation end)
             end
         end)
@@ -245,4 +265,4 @@ _G.HitMarkerSystem = HitMarkerSystem
 _G.clearAllHitMarkers = HitMarkerSystem.clearAll
 _G.showHitMarker = HitMarkerSystem.show
 
-print("Hit Marker System Loaded!")
+print("Hit Marker System Loaded! (Cartoon/Bold Font)")
