@@ -1,95 +1,54 @@
 -- ==========================================
--- FORTNITE-STYLE HIT MARKERS (Clean & Snappy)
--- Font: Luckiest Guy (bold comic style)
+-- FORTNITE-STYLE HIT MARKERS (ULTRA FAST)
+-- No lag, instant response
 -- ==========================================
 
 local HitMarkerSystem = {}
-
 HitMarkerSystem.hitMarkers = {}
 HitMarkerSystem.hitMarkerIdCounter = 0
 
--- Use Luckiest Guy font (bold, comic-style, clean)
-local HIT_FONT = Font.fromId(12187360085)
+-- Use UI font (fastest, no loading)
+local FONT = Drawing.Fonts.UI
 
-HitMarkerSystem.OUTLINE_THICKNESS = 4
-HitMarkerSystem.SHADOW_OFFSET = 3
-
-function HitMarkerSystem.getRandomOffset()
-    local angle = math.random() * math.pi * 2
-    local distance = math.random(25, 65)
-    local verticalOffset = math.random(-30, 40)
-    return Vector2.new(
-        math.cos(angle) * distance,
-        math.sin(angle) * distance * 0.5 + verticalOffset
-    )
-end
-
-function HitMarkerSystem.getRandomRotation()
-    return math.random(-25, 25)
-end
-
-function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart, flags)
-    HitMarkerSystem.hitMarkerIdCounter = HitMarkerSystem.hitMarkerIdCounter + 1
-    local id = HitMarkerSystem.hitMarkerIdCounter
+function HitMarkerSystem.show(damage, targetCharacter, hitPart, flags)
+    if not flags.HitMarkersEnabled then return end
+    if not targetCharacter or not targetCharacter.Parent then return end
     
-    if not flags.HitMarkersEnabled then return nil end
-    
-    -- Get target's CURRENT screen position
+    -- Get target screen position INSTANTLY
     local camera = workspace.CurrentCamera
-    local viewport = camera.ViewportSize
-    
-    -- Find the target's head position
     local targetPos = nil
-    if targetCharacter and targetCharacter.Parent then
-        local head = targetCharacter:FindFirstChild("Head")
-        if head then
-            targetPos = head.Position
-        else
-            local hrp = targetCharacter:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                targetPos = hrp.Position
-            end
-        end
+    local head = targetCharacter:FindFirstChild("Head")
+    
+    if head then
+        targetPos = head.Position
+    else
+        local hrp = targetCharacter:FindFirstChild("HumanoidRootPart")
+        if hrp then targetPos = hrp.Position end
     end
     
-    if not targetPos then return nil end
+    if not targetPos then return end
     
-    -- Convert to screen position
     local screenPos, onScreen = camera:WorldToViewportPoint(targetPos)
-    local finalPos = Vector2.new(viewport.X / 2, viewport.Y / 2)
-    
-    if onScreen and screenPos.Z > 0 then
-        finalPos = Vector2.new(screenPos.X, screenPos.Y)
-    end
+    if not onScreen or screenPos.Z <= 0 then return end
     
     -- Get settings
     local color = flags.HitMarkerColor and flags.HitMarkerColor.Color or Color3.fromRGB(255, 255, 255)
-    local size = flags.HitMarkerSize or 52
-    local duration = flags.HitMarkerDuration or 0.5
-    local isHeadshot = hitPart and (hitPart.Name == "Head" or string.find(hitPart.Name, "Head"))
+    local size = flags.HitMarkerSize or 55
+    local duration = flags.HitMarkerDuration or 0.4
+    local isHeadshot = hitPart and (hitPart.Name == "Head")
     
-    -- Format damage (no decimals)
-    local damageText = "+" .. math.floor(damageAmount)
-    
-    -- Dynamic sizing
+    -- Format text
+    local damageText = "+" .. math.floor(damage)
     local finalSize = size
-    if isHeadshot then finalSize = size + 12
-    elseif damageAmount > 50 then finalSize = size + 8
-    elseif damageAmount > 30 then finalSize = size + 4 end
+    if isHeadshot then finalSize = size + 12 end
     
     -- Random offset around head
-    local randomOffset = HitMarkerSystem.getRandomOffset()
-    local randomRotation = HitMarkerSystem.getRandomRotation()
+    local angle = math.random() * math.pi * 2
+    local distance = math.random(20, 60)
+    local offsetX = math.cos(angle) * distance
+    local offsetY = math.sin(angle) * distance * 0.5 - 10
     
-    -- Calculate START position (where number appears)
-    local startX = finalPos.X + randomOffset.X
-    local startY = finalPos.Y + randomOffset.Y
-    
-    -- Random float direction
-    local floatDirX = math.random(-18, 18)
-    local floatDirY = math.random(-75, -55)
-    
-    -- CREATE MAIN TEXT
+    -- Create text INSTANTLY
     local text = Drawing.new("Text")
     text.Text = damageText
     text.Size = finalSize
@@ -97,122 +56,95 @@ function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart,
     text.Center = true
     text.Outline = true
     text.OutlineColor = Color3.fromRGB(0, 0, 0)
-    text.OutlineThickness = HitMarkerSystem.OUTLINE_THICKNESS
-    text.FontFace = HIT_FONT
+    text.OutlineThickness = 4
+    text.Font = FONT
     text.Visible = true
     text.ZIndex = 10
-    text.Rotation = randomRotation
-    text.Position = Vector2.new(startX, startY)
+    text.Position = Vector2.new(screenPos.X + offsetX, screenPos.Y + offsetY)
     
-    -- CREATE SHADOW
+    -- Shadow
     local shadow = Drawing.new("Text")
     shadow.Text = damageText
     shadow.Size = finalSize
     shadow.Color = Color3.fromRGB(0, 0, 0)
     shadow.Center = true
     shadow.Outline = false
-    shadow.FontFace = HIT_FONT
+    shadow.Font = FONT
     shadow.Visible = true
-    shadow.Transparency = 0.45
+    shadow.Transparency = 0.5
     shadow.ZIndex = 9
-    shadow.Rotation = randomRotation
-    shadow.Position = Vector2.new(startX + HitMarkerSystem.SHADOW_OFFSET, startY + HitMarkerSystem.SHADOW_OFFSET)
+    shadow.Position = Vector2.new(text.Position.X + 3, text.Position.Y + 3)
     
-    -- Store marker data
-    local marker = {
-        id = id,
+    local id = HitMarkerSystem.hitMarkerIdCounter + 1
+    HitMarkerSystem.hitMarkerIdCounter = id
+    
+    -- Store marker with animation data
+    local startX = text.Position.X
+    local startY = text.Position.Y
+    local startTime = tick()
+    local floatX = math.random(-15, 15)
+    local floatY = math.random(-60, -40)
+    
+    HitMarkerSystem.hitMarkers[id] = {
         text = text,
         shadow = shadow,
-        startTime = tick(),
+        startTime = startTime,
         duration = duration,
         startX = startX,
         startY = startY,
-        startSize = finalSize,
-        startRotation = randomRotation,
-        floatDirX = floatDirX,
-        floatDirY = floatDirY,
-        wiggleSpeed = math.random(18, 30),
-        wiggleAmount = math.random(6, 14),
-        rotationSpeed = math.random(50, 150),
-        isHeadshot = isHeadshot
+        floatX = floatX,
+        floatY = floatY,
+        startSize = finalSize
     }
-    
-    HitMarkerSystem.hitMarkers[id] = marker
-    return id
 end
 
-function HitMarkerSystem.updateHitMarkers()
-    local now = tick()
-    
-    for id, marker in pairs(HitMarkerSystem.hitMarkers) do
-        local elapsed = now - marker.startTime
-        local t = math.clamp(elapsed / marker.duration, 0, 1)
-        
-        -- Easing functions
-        local easeOutCubic = 1 - (1 - t) ^ 3
-        local easeOutBack = 1 + 2.70158 * (t - 1) ^ 3 + 1.70158 * (t - 1) ^ 2
-        
-        -- JIGGLE (only during first 20%)
-        local jiggleX = 0
-        local jiggleY = 0
-        if t < 0.2 then
-            local intensity = 1 - (t / 0.2)
-            jiggleX = math.sin(elapsed * marker.wiggleSpeed) * marker.wiggleAmount * intensity
-            jiggleY = math.cos(elapsed * marker.wiggleSpeed * 1.5) * (marker.wiggleAmount * 0.6) * intensity
-        end
-        
-        -- Position (float up + jiggle)
-        local newX = marker.startX + jiggleX + (marker.floatDirX * easeOutCubic)
-        local newY = marker.startY + jiggleY - (math.abs(marker.floatDirY) * easeOutCubic)
-        
-        -- Size animation (POP then normal)
-        local sizeMultiplier = 1
-        if t < 0.12 then
-            -- Pop in (starts big, shrinks)
-            sizeMultiplier = 1.35 - (t / 0.12) * 0.35
-        elseif t > 0.7 then
-            -- Shrink on fade
-            sizeMultiplier = 1 - ((t - 0.7) / 0.3) * 0.2
-        end
-        
-        local newSize = marker.startSize * sizeMultiplier
-        
-        -- Rotation (slowly un-tilt)
-        local newRotation = marker.startRotation * (1 - t * 0.8)
-        
-        -- FADE (starts at 40%, ends at 100%)
-        local alpha = 1
-        if t > 0.4 then
-            alpha = 1 - ((t - 0.4) / 0.6)
-            alpha = math.clamp(alpha, 0, 1)
-        end
-        
-        -- Apply updates
-        pcall(function()
-            if marker.text then
-                marker.text.Position = Vector2.new(newX, newY)
-                marker.text.Size = newSize
-                marker.text.Transparency = 1 - alpha
-                marker.text.Rotation = newRotation
+-- Update loop (runs every frame)
+task.spawn(function()
+    while true do
+        local now = tick()
+        for id, marker in pairs(HitMarkerSystem.hitMarkers) do
+            local elapsed = now - marker.startTime
+            local t = math.clamp(elapsed / marker.duration, 0, 1)
+            
+            -- Fast fade (starts at 30%)
+            local alpha = 1
+            if t > 0.3 then
+                alpha = 1 - ((t - 0.3) / 0.7)
+                alpha = math.clamp(alpha, 0, 1)
             end
-            if marker.shadow then
-                marker.shadow.Position = Vector2.new(newX + HitMarkerSystem.SHADOW_OFFSET, newY + HitMarkerSystem.SHADOW_OFFSET)
-                marker.shadow.Size = newSize
-                marker.shadow.Transparency = 0.45 * (1 - alpha)
-                marker.shadow.Rotation = newRotation
-            end
-        end)
-        
-        -- Clean up
-        if elapsed >= marker.duration then
+            
+            -- Position (float up)
+            local newX = marker.startX + (marker.floatX * t)
+            local newY = marker.startY - (math.abs(marker.floatY) * t)
+            
+            -- Size (shrink slightly)
+            local newSize = marker.startSize * (1 - t * 0.15)
+            
             pcall(function()
-                if marker.text then marker.text:Remove() end
-                if marker.shadow then marker.shadow:Remove() end
+                if marker.text then
+                    marker.text.Position = Vector2.new(newX, newY)
+                    marker.text.Size = newSize
+                    marker.text.Transparency = 1 - alpha
+                end
+                if marker.shadow then
+                    marker.shadow.Position = Vector2.new(newX + 3, newY + 3)
+                    marker.shadow.Size = newSize
+                    marker.shadow.Transparency = 0.5 * (1 - alpha)
+                end
             end)
-            HitMarkerSystem.hitMarkers[id] = nil
+            
+            -- Remove when done
+            if elapsed >= marker.duration then
+                pcall(function()
+                    if marker.text then marker.text:Remove() end
+                    if marker.shadow then marker.shadow:Remove() end
+                end)
+                HitMarkerSystem.hitMarkers[id] = nil
+            end
         end
+        task.wait()
     end
-end
+end)
 
 function HitMarkerSystem.clearAll()
     for id, marker in pairs(HitMarkerSystem.hitMarkers) do
@@ -224,34 +156,8 @@ function HitMarkerSystem.clearAll()
     end
 end
 
-function HitMarkerSystem.show(damage, targetCharacter, hitPart, flags)
-    if not flags.HitMarkersEnabled then return end
-    if not targetCharacter or not targetCharacter.Parent then return end
-    
-    local isHeadshot = hitPart and (hitPart.Name == "Head" or string.find(hitPart.Name, "Head"))
-    
-    if isHeadshot and flags.HitMarkerHeadshotColor then
-        local headshotColor = flags.HitMarkerHeadshotColor.Color or Color3.fromRGB(255, 200, 50)
-        local oldColor = flags.HitMarkerColor
-        flags.HitMarkerColor = {Color = headshotColor, Transparency = 1}
-        HitMarkerSystem.createHitMarker(damage, targetCharacter, hitPart, flags)
-        flags.HitMarkerColor = oldColor
-    else
-        HitMarkerSystem.createHitMarker(damage, targetCharacter, hitPart, flags)
-    end
-end
-
--- Start update loop
-task.spawn(function()
-    while true do
-        HitMarkerSystem.updateHitMarkers()
-        task.wait()
-    end
-end)
-
--- Make globally accessible
 _G.HitMarkerSystem = HitMarkerSystem
 _G.clearAllHitMarkers = HitMarkerSystem.clearAll
 _G.showHitMarker = HitMarkerSystem.show
 
-print("Hit Marker System Loaded! (Luckiest Guy font - Clean comic style)")
+print("ULTRA FAST Hit Marker System Loaded!")
