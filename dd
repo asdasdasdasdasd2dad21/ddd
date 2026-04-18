@@ -59,7 +59,7 @@ function HitMarkerSystem.createHitMarker(damageAmount, targetCharacter, hitPart,
     text.Outline = true
     text.OutlineColor = Color3.fromRGB(0, 0, 0)
     text.OutlineThickness = HitMarkerSystem.FORTNITE_OUTLINE_THICKNESS
-    text.Font = HitMarkerSystem.CARTOON_FONTS[1]  -- UI font (boldest)
+    text.Font = HitMarkerSystem.Monospace  -- UI font (boldest)
     text.Visible = true
     text.ZIndex = 10
     
